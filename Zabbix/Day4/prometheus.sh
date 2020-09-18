@@ -1,7 +1,5 @@
 #! /bin/bash
-prometheus_ip=
-mail_pass=
-node_exporter_ip=
+
 ## installing docker and docker-compose on Centos 7
 # install the yum-utils package (which provides the yum-config-manager utility)
 sudo yum install -y yum-utils
@@ -41,7 +39,7 @@ scrape_configs:
 - job_name: node_exporter
   static_configs:
   - targets:
-    - $node_exporter_ip:9100
+    - ${node_exporter_ip}:9100
 - job_name: blackbox
   metrics_path: /probe
   params:
@@ -65,12 +63,12 @@ route:
 receivers:
 - name: email
   email_configs:
-  - to: dzmitry_mezhva@epam.com
-    from: dzmitry.mezhva@gmail.com
-    smarthost: smtp.gmail.com:465
-    auth_username: dzmitry.mezhva@gmail.com
-    auth_identity: dzmitry.mezhva@gmail.com
-    auth_password: $mail_pass
+  - to: ${email}
+    from: ${email}
+    smarthost: ${smtp_server}
+    auth_username: ${email}
+    auth_identity: ${email}
+    auth_password: ${email_pass}
 EOF
 
 # creating alert rule
@@ -90,6 +88,7 @@ groups:
     labels:
         severity: 'critical'
 EOF
+
 sudo sleep 20
 # crerate docker compose file
 sudo tee /tmp/docker-compose.yaml << EOF
@@ -135,6 +134,19 @@ cd /tmp/
 sudo docker-compose up -d
 
 # add prometheus to grafana
-#sudo sleep 30
-#curl -X POST http://admin:admin@localhost:3000/api/datasources -H "Content-Type: application/json;charset=UTF-8" --data-binary \
-#'{"name":"Prometheus","type":"prometheus","url":"http://$prometheus_ip:9090","access":"proxy","isDefault":true}'
+sudo sleep 30
+curl -X POST http://admin:admin@localhost:3000/api/datasources -H "Content-Type: application/json;charset=UTF-8" --data-binary \
+'{"name":"Prometheus","type":"prometheus","url":"http://${prometheus_ip}:9090","access":"proxy","isDefault":true}'
+
+# install wget
+sudo yum install -y wget
+
+# add web and linux dashboards to grafana
+sudo wget -O /tmp/web.json https://grafana.com/api/dashboards/5345/revisions/3/download
+sudo wget -O /tmp/linux.json https://grafana.com/api/dashboards/10180/revisions/1/download
+sudo sed -i.backup "s/$\?{\?DS_PROMETHEUS-APL}\?/Prometheus/g; s/DS_PROMETHEUS-APL/Prometheus/g; s/$\?{\?DS_PROMETHEUS}\?/Prometheus/g; s/DS_PROMETHEUS/Prometheus/g" /tmp/*.json
+sudo curl -X POST http://admin:admin@localhost:3000/api/dashboards/db -H "Content-Type: application/json;charset=UTF-8" --data-binary \
+"{\"dashboard\": $(cat /tmp/web.json),\"overwrite\":true,\"folderId\":0}"
+sudo curl -X POST http://admin:admin@localhost:3000/api/dashboards/db -H "Content-Type: application/json;charset=UTF-8" --data-binary \
+"{\"dashboard\": $(cat /tmp/linux.json),\"overwrite\":true,\"folderId\":0}"
+
